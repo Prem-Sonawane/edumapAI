@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AI Learning Planner — Generate personalized learning roadmaps powered by AI" />
+  <title>LearnAI — AI Learning Planner</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Ambient background -->
+  <div class="ambient" aria-hidden="true">
+    <div class="ambient__orb ambient__orb--1"></div>
+    <div class="ambient__orb ambient__orb--2"></div>
+    <div class="ambient__orb ambient__orb--3"></div>
+    <div class="ambient__grid"></div>
+  </div>
+
+  <!-- Global toast -->
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- ========== NAVBAR ========== -->
+  <header class="navbar" id="main-navbar" role="banner" style="display: none;">
+    <div class="navbar__inner">
+      <a class="navbar__brand" href="#" onclick="return App.navigate('generator')">
+  <div class="navbar__logo" aria-hidden="true">
+    <img src="https://i.postimg.cc/HkW4hQNQ/EDUMAPAI-SILVER-LOGO.png" 
+         alt="EdumapAI" 
+         class="logo-dark" 
+         style="width: 250%; height: 250%; object-fit: contain;">
+    <img src="https://i.postimg.cc/g0Wdp2VG/EDUMAP-BLACK-LOGO.png" 
+         alt="EdumapAI" 
+         class="logo-light" 
+         style="width:250%; height: 250%; object-fit: contain; display: none;">
+  </div>
+  <!-- The text "LearnAI" and "Beta" badge are removed -->
+</a>
+      <nav class="navbar__nav" aria-label="Primary navigation">
+        <button class="navbar__link navbar__link--active" data-page="generator" onclick="App.navigate('generator')" aria-current="page">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><path d="M7 1l1.5 3.5H12L9 7l1.2 3.8L7 9l-3.2 1.8L5 7 2 4.5h3.5L7 1z"/></svg>
+          Generator
+        </button>
+        <button class="navbar__link" data-page="library" onclick="App.navigate('library')">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="3" height="12"/><rect x="5.5" y="1" width="3" height="12"/><rect x="10" y="1" width="3" height="12"/></svg>
+          My Library
+          <span class="navbar__count" id="nav-course-count"></span>
+        </button>
+      </nav>
+
+      <div class="navbar__actions">
+        <div class="streak-display" id="streak-display">🔥 0 days</div>
+        <div class="navbar__status" id="api-status">
+          <span class="status__dot"></span>
+          <span class="status__label">AI Ready</span>
+        </div>
+        <!-- User menu -->
+        <div class="user-menu" id="user-menu" style="display: none;">
+          <button class="user-menu__trigger" id="user-menu-trigger">
+            <div class="user-avatar" id="user-avatar">👤</div>
+          </button>
+          <div class="user-menu__dropdown" id="user-menu-dropdown" style="display: none;">
+            <div class="user-menu__info">
+              <div class="user-menu__name" id="user-name"></div>
+              <div class="user-menu__email" id="user-email"></div>
+            </div>
+            <div class="user-menu__divider"></div>
+            <button class="user-menu__item" id="logout-btn">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========== PAGE: GENERATOR ========== -->
+  <main id="page-generator" class="page page--active" aria-label="Course Generator">
+    <section class="hero">
+      <div class="hero__eyebrow">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="#a78bfa" aria-hidden="true"><circle cx="6" cy="6" r="5" opacity=".3"/><circle cx="6" cy="6" r="2.5"/></svg>
+        AI-Powered Curriculum Engine
+      </div>
+      <h1 class="hero__title">Learn anything,<br /><em>structured perfectly.</em></h1>
+      <p class="hero__subtitle">Describe what you want to master. Our AI builds a structured, personalized roadmap with milestones, lessons, and a realistic timeline.</p>
+    </section>
+
+    <div class="card generator-card">
+      <div class="field">
+        <label class="field__label" for="subject">What do you want to learn?<span class="field__required" aria-label="required">*</span></label>
+        <div class="field__control">
+          <input id="subject" class="field__input" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="e.g. Machine Learning, Guitar, Python, UI Design…" aria-describedby="subject-hint" />
+        </div>
+        <span id="subject-hint" class="field__hint">Be specific — "Python for Data Science" works better than just "Python"</span>
+        <span class="field__error" id="subject-error" role="alert" aria-live="assertive"></span>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field__label" for="duration">Duration <span class="field__required" aria-label="required">*</span></label>
+          <input id="duration" class="field__input" type="number" min="1" max="365" value="4" />
+          <span class="field__error" id="duration-error" role="alert" aria-live="assertive"></span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="unit">Unit</label>
+          <div class="field__select-wrapper">
+            <select id="unit" class="field__input field__select">
+              <option value="days">Days</option>
+              <option value="weeks" selected>Weeks</option>
+              <option value="months">Months</option>
+            </select>
+            <span class="field__select-arrow" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4l4 4 4-4"/></svg></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label">Skill level</label>
+        <div class="field__segment" role="group" aria-label="Select your skill level">
+          <button class="segment__btn segment__btn--active" data-value="beginner" onclick="UI.selectSegment(this,'difficulty')">Beginner</button>
+          <button class="segment__btn" data-value="intermediate" onclick="UI.selectSegment(this,'difficulty')">Intermediate</button>
+          <button class="segment__btn" data-value="advanced" onclick="UI.selectSegment(this,'difficulty')">Advanced</button>
+        </div>
+        <input type="hidden" id="difficulty" value="beginner" />
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn--primary btn--lg" id="generate-btn" onclick="App.generateCourse()">
+          <span class="btn__icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l1.8 4.2L14 7l-4.2 1.8L8 13l-1.8-4.2L2 7l4.2-1.8L8 1z"/></svg></span>
+          <span class="btn__label">Generate with AI</span>
+          <span class="btn__loader" aria-hidden="true"></span>
+        </button>
+        <button class="btn btn--ghost btn--lg" onclick="App.navigate('library')"><span class="btn__icon" aria-hidden="true">📚</span> My Library</button>
+      </div>
+    </div>
+
+    <!-- Result Preview Card -->
+    <div id="result-card" class="card result-card" hidden aria-label="Generated course preview">
+      <div class="result-card__header">
+        <div class="chip chip--violet"><svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true"><path d="M5 1l1 2.5H8.5L6.5 5l.8 2.5L5 6.2 2.7 7.5l.8-2.5L1.5 3.5H4L5 1z"/></svg> AI Generated</div>
+        <div class="chip chip--amber" id="result-duration-badge"></div>
+        <button class="icon-btn" onclick="App.clearResult()" aria-label="Discard preview"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l12 12M13 1L1 13"/></svg></button>
+      </div>
+      <h2 class="result-card__title" id="result-title"></h2>
+      <p class="result-card__desc" id="result-desc"></p>
+      <div class="result-card__stats" id="result-stats"></div>
+      <div class="lesson-preview" id="lessons-preview" aria-label="Lesson preview"></div>
+      <div class="result-card__actions">
+        <button class="btn btn--primary" id="save-btn" onclick="App.saveCourse()"><span class="btn__icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 1h8l3 3v9H2V1zm4 8v3m0-3l-2 2m2-2l2 2"/></svg></span><span class="btn__label">Save to Library</span><span class="btn__loader" aria-hidden="true"></span></button>
+        <button class="btn btn--outline" onclick="App.generateCourse()">↺ Regenerate</button>
+        <button class="btn btn--ghost" onclick="App.clearResult()">Discard</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ========== PAGE: LIBRARY ========== -->
+  <main id="page-library" class="page" hidden aria-label="My Course Library">
+    <div class="page-header">
+      <div class="page-header__text">
+        <h2 class="page-header__title">My Library</h2>
+        <p class="page-header__subtitle">Your saved learning journeys</p>
+      </div>
+      <button class="btn btn--primary btn--sm" onclick="App.navigate('generator')">+ New Course</button>
+    </div>
+
+    <div class="library-toolbar" id="library-toolbar" hidden>
+  <div class="search-field">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="5.5" cy="5.5" r="4.5"/><path d="M9.5 9.5L13 13" stroke-linecap="round"/></svg>
+    <input type="search" id="library-search" class="search-field__input" placeholder="Search courses…" oninput="UI.filterLibrary()" aria-label="Search courses" />
+  </div>
+  <!-- REMOVED: JSON import button and hidden file input -->
+  <div class="library-toolbar__meta" id="library-meta"></div>
+</div>
+
+    <div id="library-empty" class="empty-state">
+      <div class="empty-state__visual" aria-hidden="true"><svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="10" y="20" width="60" height="45" rx="6" stroke="#3f3a5e" stroke-width="2"/><rect x="18" y="10" width="44" height="45" rx="6" stroke="#2d2952" stroke-width="2" fill="#1a1830"/><path d="M25 32h30M25 40h20" stroke="#4f4880" stroke-width="2" stroke-linecap="round"/></svg></div>
+      <h3 class="empty-state__title">Your library is empty</h3>
+      <p class="empty-state__text">Generate your first AI-powered course roadmap to get started.</p>
+      <button class="btn btn--primary" onclick="App.navigate('generator')">⚡ Generate My First Course</button>
+    </div>
+
+    <div id="library-grid" class="library-grid" aria-live="polite"></div>
+  </main>
+
+  <!-- ========== PAGE: DASHBOARD ========== -->
+  <main id="page-dashboard" class="page" hidden aria-label="Course Dashboard">
+    <div class="page-header">
+      <div class="page-header__text">
+        <button class="back-link" onclick="App.navigate('library')"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2L4 7l5 5"/></svg> Back to Library</button>
+        <h2 class="page-header__title" id="dashboard-title"></h2>
+        <p class="page-header__subtitle" id="dashboard-meta"></p>
+      </div>
+      <!-- Dashboard header actions (delete, share, report, progress ring) -->
+      <div style="display: flex; align-items: center; gap: var(--space-3);">
+        <button class="icon-btn" id="dashboard-delete-btn" title="Delete course" aria-label="Delete course">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M2 4h12M5 4V2h6v2M4 8v4M8 8v4M12 8v4" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <!-- NEW: Share button -->
+        <button class="icon-btn" id="dashboard-share-btn" title="Share course">🔗</button>
+        <!-- Final Report button (hidden by default) -->
+        <button class="icon-btn" id="dashboard-report-btn" title="Final Evaluation Report" aria-label="Final Report" style="display: none;">📊</button>
+        <div class="progress-ring" aria-hidden="true">
+          <svg class="progress-ring__svg" viewBox="0 0 72 72">
+            <defs><linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient></defs>
+            <circle class="progress-ring__track" cx="36" cy="36" r="28"/>
+            <circle class="progress-ring__fill" cx="36" cy="36" r="28" id="ring-fill"/>
+          </svg>
+          <span class="progress-ring__label" id="ring-label">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="dashboard-stats" id="dashboard-stats"></div>
+
+    <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+      <div class="progress-bar__header"><span class="progress-bar__label">Overall Progress</span><span class="progress-bar__value" id="dashboard-pct">0%</span></div>
+      <div class="progress-bar__track"><div class="progress-bar__fill" id="dashboard-bar"></div></div>
+    </div>
+
+    <div class="lessons-section">
+      <div class="lessons-section__header">
+        <h3 class="lessons-section__title">Lessons</h3>
+      </div>
+      <div id="dashboard-lessons" class="lessons-list" aria-live="polite"></div>
+    </div>
+  </main>
+
+  <!-- Hidden auth page (no longer used) -->
+  <main id="page-auth" class="page" hidden></main>
+
+  <!-- ========== LOGIN MODAL (exact match to design) ========== -->
+<div id="login-modal" class="login-modal" style="display: flex;">
+  <div class="login-modal__backdrop"></div>
+  <div class="login-modal__box card">
+    <div class="login-modal__logo-wrapper">
+      <img src="https://i.postimg.cc/HkW4hQNQ/EDUMAPAI-SILVER-LOGO.png" alt="EdumapAI" class="login-logo">
+    </div>
+    <h2 class="login-modal__title">Sign in to EdumapAI</h2>
+    <p class="login-modal__subtitle">Save your progress and access your<br>library anywhere.</p>
+    
+    <button class="btn btn--google" id="google-signin-btn">
+      <svg width="20" height="20" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Continue with Google
+    </button>
+    
+    <p class="login-modal__guest">
+      <a href="#" id="continue-as-guest">or continue as a guest</a> (data saved locally)
+    </p>
+  </div>
+</div>
+  <!-- Firebase SDK (modular) -->
+  <script type="importmap">
+    {
+      "imports": {
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import { initializeApp } from 'firebase/app';
+    import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+    import { getFirestore } from 'firebase/firestore';
+
+    // ⚠️ REPLACE WITH YOUR OWN FIREBASE CONFIG
+    const firebaseConfig = {
+      apiKey: "AIzaSyBImVi3VTNQI8a0F0_eK0NA3oV1oialo-k",
+      authDomain: "edumapai.firebaseapp.com",
+      projectId: "edumapai",
+      storageBucket: "edumapai.firebasestorage.app",
+      messagingSenderId: "375885839498",
+      appId: "1:375885839498:web:d825d65b768053e25b4173"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+    const db = getFirestore(app);
+
+    window.auth = auth;
+    window.provider = provider;
+    window.db = db;
+    console.log('Firebase initialized');
+  </script>
+
+  <!-- Main script -->
+  <script type="module" src="script.js"></script>
+</body>
+</html>
