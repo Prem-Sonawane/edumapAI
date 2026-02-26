@@ -1175,7 +1175,7 @@ const UIRenderer = (() => {
     }
   }
 
-  // ---------- TTS Player with pause/resume ----------
+  // ---------- TTS Player with pause/resume (fixed restart) ----------
   function createTTSPlayer(text, voice = 'aura-asteria-en') {
     const MAX_CHUNK_SIZE = 1000;
     const chunks = [];
@@ -1281,8 +1281,11 @@ const UIRenderer = (() => {
     }
 
     function restart() {
-      stop();
-      playChunk(0, 0);
+      stop(); // clean up everything
+      // small delay to ensure cleanup is complete before starting anew
+      setTimeout(() => {
+        playChunk(0, 0);
+      }, 0);
     }
 
     return {
