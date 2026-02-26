@@ -1,6 +1,5 @@
 // ============================================================
 // AI Learning Planner — script.js (with share feature + imported badge + pending import fix)
-// SECURE GEMINI PROXY — uses Vercel serverless function
 // ============================================================
 
 import { 
@@ -10,10 +9,12 @@ import {
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 
 // ============================================================
-// CONFIGURATION – No API key here – it's on the server
+// CONFIGURATION – REPLACE WITH YOUR ACTUAL GEMINI API KEY
 // ============================================================
 const CONFIG = {
+  GEMINI_API_KEY: 'API', // ← PASTE YOUR KEY HERE
   MODEL: 'gemini-2.5-flash',
+  API_URL: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
   MAX_OUTPUT_TOKENS: 32768,
   CHUNK_SIZE: 5,
   RETRY_LIMIT: 2,
@@ -572,21 +573,20 @@ const FallbackGenerator = (() => {
 })();
 
 // ============================================================
-// GEMINI AI CLIENT – contains full generation logic (now using proxy)
+// GEMINI AI CLIENT – contains full generation logic
 // ============================================================
 const GeminiAI = (() => {
-  // Always configured because we use a serverless proxy
   function isConfigured() {
-    return true;
+    return CONFIG.GEMINI_API_KEY && CONFIG.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY' && CONFIG.GEMINI_API_KEY.length > 10;
   }
-
   async function callGemini(prompt, description = 'API call') {
+    const url = `${CONFIG.API_URL}?key=${CONFIG.GEMINI_API_KEY}`;
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.8, maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS },
     };
-    console.log(`[GeminiAI] ${description} – sending request to proxy...`);
-    const res = await fetch('/api/gemini', {
+    console.log(`[GeminiAI] ${description} – sending request...`);
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -594,13 +594,13 @@ const GeminiAI = (() => {
     if (!res.ok) {
       const errorText = await res.text();
       console.error(`[GeminiAI] HTTP error ${res.status}:`, errorText);
-      throw new Error(`Gemini proxy error: ${res.status} ${errorText}`);
+      throw new Error(`Gemini API error: ${res.status} ${errorText}`);
     }
     const data = await res.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) {
       console.error('[GeminiAI] Empty response, full data:', data);
-      throw new Error('Empty response from Gemini proxy');
+      throw new Error('Empty response from Gemini');
     }
     const repaired = repairJSON(text);
     if (!repaired) throw new Error('No JSON found in response');
@@ -611,9 +611,9 @@ const GeminiAI = (() => {
       throw new Error('Invalid JSON after repair');
     }
   }
-
   async function generateCourse({ subject, duration, unit, difficulty }) {
     console.log('[GeminiAI] Starting course generation', { subject, duration, unit, difficulty });
+    if (!isConfigured()) throw new Error('Gemini not configured or invalid key');
     const totalDays = unit === 'weeks' ? duration * 7 : unit === 'months' ? duration * 30 : duration;
     const numDays = totalDays;
     const domain = DomainDetector.detect(subject);
@@ -727,7 +727,6 @@ Return a JSON object with a single key "lessons" containing an array of lesson o
       lessons: allLessons,
     };
   }
-
   async function askDoubt(lessonContent, question) {
     const prompt = `You are a helpful tutor. Answer the following question about the lesson below. Provide a complete, detailed answer. Do not stop mid-sentence. Your answer should be helpful and thorough, and you must finish the answer completely. Take your time to write a full response. Use as many words as needed.
 
@@ -738,14 +737,28 @@ Question: ${question}
 
 Answer:`;
     try {
-      const data = await callGemini(prompt, 'Ask doubt');
-      return typeof data === 'string' ? data : JSON.stringify(data);
+      const url = `${CONFIG.API_URL}?key=${CONFIG.GEMINI_API_KEY}`;
+      const body = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+      };
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const answer = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!answer) throw new Error('Empty response');
+      console.log('[Doubt] Raw answer from API:', answer);
+      console.log('[Doubt] Answer length:', answer.length);
+      return answer.trim();
     } catch (e) {
       console.error('Doubt API failed', e);
       return 'Sorry, I could not answer your doubt at the moment. Please try again later.';
     }
   }
-
   async function generateQuiz(lessonContent, numQuestions) {
     const prompt = `You are an expert quiz creator. Based on the following lesson, generate a quiz with exactly ${numQuestions} multiple‑choice questions. The questions should test understanding of the key concepts.
 
@@ -779,7 +792,6 @@ Return a JSON object with a single key "questions" containing an array of questi
       return fallback;
     }
   }
-
   return { isConfigured, generateCourse, askDoubt, generateQuiz };
 })();
 
@@ -1727,53 +1739,57 @@ const UIRenderer = (() => {
   }
 
   // ========== SHARE MODAL ==========
-  function showShareModal(link) {
-    document.getElementById('share-modal')?.remove();
-    const modal = document.createElement('div');
-    modal.id = 'share-modal';
-    modal.className = 'share-modal';
-    modal.innerHTML = `
-      <div class="share-modal__backdrop"></div>
-      <div class="share-modal__box card">
-        <h3 class="share-modal__title">Share Course</h3>
-        <p>Anyone with this link can view and import the course.</p>
-        <input type="text" id="share-link-input" class="share-modal__input" value="${link}" readonly>
-        <div class="share-modal__actions">
-          <button class="btn btn--primary" id="copy-link-btn">Copy Link</button>
-          <button class="btn btn--outline" id="close-share-btn">Close</button>
-        </div>
+  // ========== SHARE MODAL ==========
+function showShareModal(link) {
+  document.getElementById('share-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'share-modal';
+  modal.className = 'share-modal';
+  modal.innerHTML = `
+    <div class="share-modal__backdrop"></div>
+    <div class="share-modal__box card">
+      <h3 class="share-modal__title">Share Course</h3>
+      <p>Anyone with this link can view and import the course.</p>
+      <input type="text" id="share-link-input" class="share-modal__input" value="${link}" readonly>
+      <div class="share-modal__actions">
+        <button class="btn btn--primary" id="copy-link-btn">Copy Link</button>
+        <button class="btn btn--outline" id="close-share-btn">Close</button>
       </div>
-    `;
-    document.body.appendChild(modal);
-    requestAnimationFrame(() => modal.classList.add('is-open'));
+    </div>
+  `;
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('is-open'));
 
-    const close = () => {
-      modal.classList.remove('is-open');
-      setTimeout(() => modal.remove(), 300);
-    };
-    modal.querySelector('.share-modal__backdrop').addEventListener('click', close);
-    modal.querySelector('#close-share-btn').addEventListener('click', close);
+  const close = () => {
+    modal.classList.remove('is-open');
+    setTimeout(() => modal.remove(), 300);
+  };
+  modal.querySelector('.share-modal__backdrop').addEventListener('click', close);
+  modal.querySelector('#close-share-btn').addEventListener('click', close);
 
-    const copyBtn = modal.querySelector('#copy-link-btn');
-    const input = modal.querySelector('#share-link-input');
-    
-    copyBtn.addEventListener('click', () => {
-      input.select();
-      input.setSelectionRange(0, 99999);
+  const copyBtn = modal.querySelector('#copy-link-btn');
+  const input = modal.querySelector('#share-link-input');
+  
+  copyBtn.addEventListener('click', () => {
+    // Select the input text (fallback for older browsers)
+    input.select();
+    input.setSelectionRange(0, 99999); // For mobile devices
 
-      try {
-        navigator.clipboard.writeText(link).then(() => {
-          UIRenderer.toast('Link copied!', 'success');
-        }).catch(() => {
-          document.execCommand('copy');
-          UIRenderer.toast('Link copied!', 'success');
-        });
-      } catch (err) {
-        UIRenderer.toast('Press Ctrl+C to copy', 'info');
-      }
-    });
-  }
-
+    try {
+      // Try using the modern clipboard API
+      navigator.clipboard.writeText(link).then(() => {
+        UIRenderer.toast('Link copied!', 'success');
+      }).catch(() => {
+        // Fallback: document.execCommand (still works in many browsers)
+        document.execCommand('copy');
+        UIRenderer.toast('Link copied!', 'success');
+      });
+    } catch (err) {
+      // If everything fails, inform the user to copy manually
+      UIRenderer.toast('Press Ctrl+C to copy', 'info');
+    }
+  });
+}
   // ========== IMPORT URL MODAL ==========
   function showImportUrlModal() {
     document.getElementById('import-url-modal')?.remove();
@@ -1949,7 +1965,7 @@ const UIRenderer = (() => {
 const App = (() => {
   let activeCourseId = null;
   let pendingCourse = null;
-  let pendingImportId = null; // store import ID for after login/guest
+  let pendingImportId = null; // NEW: store import ID for after login/guest
 
   function navigate(page) {
     ['generator', 'library', 'dashboard'].forEach(p => {
@@ -1984,12 +2000,16 @@ const App = (() => {
 
     try {
       let course;
-      // Proxy is always available, so we can always try Gemini
-      try {
-        course = await GeminiAI.generateCourse({ subject, duration, unit, difficulty });
-      } catch (e) {
-        console.error('Gemini error, falling back:', e);
-        UIRenderer.toast('Gemini failed, using fallback content.', 'error', 4000);
+      if (GeminiAI.isConfigured()) {
+        try {
+          course = await GeminiAI.generateCourse({ subject, duration, unit, difficulty });
+        } catch (e) {
+          console.error('Gemini error, falling back:', e);
+          UIRenderer.toast('Gemini failed, using fallback content.', 'error', 4000);
+          course = FallbackGenerator.generateCourse({ subject, duration, unit, difficulty });
+        }
+      } else {
+        UIRenderer.toast('No Gemini API key – using fallback templates. Add your key for rich AI content.', 'default', 5000);
         course = FallbackGenerator.generateCourse({ subject, duration, unit, difficulty });
       }
       pendingCourse = course;
@@ -2041,6 +2061,7 @@ const App = (() => {
     if (!course) { navigate('library'); return; }
     UIRenderer.renderDashboard(course);
 
+    // Set up listener to refresh dashboard after quiz attempts
     const handleQuizAttempt = (e) => {
       if (e.detail.courseId === activeCourseId) {
         loadDashboard();
@@ -2050,6 +2071,7 @@ const App = (() => {
     document.addEventListener('quiz-attempt-saved', handleQuizAttempt);
   }
 
+  // Manual toggle no longer used
   async function toggleLesson(courseId, lessonId, forceComplete) {}
   async function markAllLessons(complete) {}
 
@@ -2212,48 +2234,51 @@ const App = (() => {
     }
   }
 
-  // ========== FINAL EVALUATION REPORT ==========
-  async function generateReport(courseId) {
-    const course = await StorageManager.getById(courseId);
-    if (!course) {
-      UIRenderer.toast('Course not found.', 'error');
-      return;
+// ========== FINAL EVALUATION REPORT ==========
+async function generateReport(courseId) {
+  const course = await StorageManager.getById(courseId);
+  if (!course) {
+    UIRenderer.toast('Course not found.', 'error');
+    return;
+  }
+
+  // Get user info
+  const user = AuthManager.getUser();
+  const studentName = user?.displayName || user?.email || 'Guest User';
+
+  const streak = await StorageManager.getStreak();
+  const completedLessons = course.lessons.filter(l => l.completed).length;
+  const totalLessons = course.lessons.length;
+
+  // Calculate average quiz score across all quizzes
+  let totalQuizScore = 0;
+  let totalQuizQuestions = 0;
+  course.lessons.forEach(lesson => {
+    if (lesson.quizzes && lesson.quizzes.length > 0) {
+      lesson.quizzes.forEach(quiz => {
+        totalQuizScore += quiz.score;
+        totalQuizQuestions += quiz.totalQuestions;
+      });
     }
+  });
+  const avgPercent = totalQuizQuestions > 0 ? Math.round((totalQuizScore / totalQuizQuestions) * 100) : 0;
+  const pointerOutOf10 = totalQuizQuestions > 0 ? ((totalQuizScore / totalQuizQuestions) * 10).toFixed(1) : '0.0';
 
-    const user = AuthManager.getUser();
-    const studentName = user?.displayName || user?.email || 'Guest User';
+  // Generate remark
+  let remark = '';
+  if (avgPercent >= 90) {
+    remark = 'Outstanding! You have mastered this course.';
+  } else if (avgPercent >= 75) {
+    remark = 'Great job! You have a solid understanding.';
+  } else if (avgPercent >= 60) {
+    remark = 'Good effort. Review the lessons you found challenging.';
+  } else if (avgPercent > 0) {
+    remark = 'Keep practicing. Revisit the quizzes to strengthen your knowledge.';
+  } else {
+    remark = 'No quizzes taken. Take quizzes to evaluate your progress.';
+  }
 
-    const streak = await StorageManager.getStreak();
-    const completedLessons = course.lessons.filter(l => l.completed).length;
-    const totalLessons = course.lessons.length;
-
-    let totalQuizScore = 0;
-    let totalQuizQuestions = 0;
-    course.lessons.forEach(lesson => {
-      if (lesson.quizzes && lesson.quizzes.length > 0) {
-        lesson.quizzes.forEach(quiz => {
-          totalQuizScore += quiz.score;
-          totalQuizQuestions += quiz.totalQuestions;
-        });
-      }
-    });
-    const avgPercent = totalQuizQuestions > 0 ? Math.round((totalQuizScore / totalQuizQuestions) * 100) : 0;
-    const pointerOutOf10 = totalQuizQuestions > 0 ? ((totalQuizScore / totalQuizQuestions) * 10).toFixed(1) : '0.0';
-
-    let remark = '';
-    if (avgPercent >= 90) {
-      remark = 'Outstanding! You have mastered this course.';
-    } else if (avgPercent >= 75) {
-      remark = 'Great job! You have a solid understanding.';
-    } else if (avgPercent >= 60) {
-      remark = 'Good effort. Review the lessons you found challenging.';
-    } else if (avgPercent > 0) {
-      remark = 'Keep practicing. Revisit the quizzes to strengthen your knowledge.';
-    } else {
-      remark = 'No quizzes taken. Take quizzes to evaluate your progress.';
-    }
-
-    const reportHTML = `
+  const reportHTML = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -2271,8 +2296,8 @@ const App = (() => {
     }
     .header {
       display: flex;
-      flex-direction: column;
-      align-items: flex-start;
+      flex-direction: column;    /* Stack logo above title */
+      align-items: flex-start;    /* Left align */
       margin-bottom: 2rem;
       border-bottom: 2px solid #e5e7eb;
       padding-bottom: 1.5rem;
@@ -2281,7 +2306,7 @@ const App = (() => {
       width: 120px;
       height: 120px;
       object-fit: contain;
-      margin-bottom: 1rem;
+      margin-bottom: 1rem;       /* Space below logo */
     }
     .course-title {
       font-size: 2.2rem;
@@ -2481,13 +2506,12 @@ const App = (() => {
   </div>
 </body>
 </html>
-    `;
+  `;
 
-    const reportWindow = window.open('', '_blank');
-    reportWindow.document.write(reportHTML);
-    reportWindow.document.close();
-  }
-
+  const reportWindow = window.open('', '_blank');
+  reportWindow.document.write(reportHTML);
+  reportWindow.document.close();
+}
   // ========== INIT ==========
   async function init() {
     ThemeManager.init();
@@ -2499,12 +2523,14 @@ const App = (() => {
     });
     UIRenderer.initLoginModal();
     UIRenderer.initUserMenu();
+    // Initially hide navbar and pages, show login modal
     document.querySelector('.navbar').style.display = 'none';
     UIRenderer.showLoginModal();
     document.body.classList.add('login-mode');
 
     window.UI = UIRenderer;
     window.App = App;
+
 
     // Check for import parameter in URL
     checkForImport();
@@ -2517,6 +2543,6 @@ const App = (() => {
     openDashboard, toggleLesson, markAllLessons, openLesson,
     deleteCourse, exportCourse, duplicateCourse, importCourse,
     shareCourse, importFromLink, importSharedCourse, generateReport,
-    pendingImportId,
+    pendingImportId, // expose for guest handler
   };
 })();
