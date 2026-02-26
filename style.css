@@ -248,15 +248,24 @@ a { text-decoration: none; color: inherit; }
   flex-shrink: 0;
 }
 
+/* Navbar logo – ensure full visibility */
 .navbar__logo {
-  width: 32px;
-  height: 32px;
-  background: rgba(139, 92, 246, 0.12);
-  border: 1px solid rgba(139, 92, 246, 0.25);
-  border-radius: var(--radius-sm);
+  width: auto;           /* Let it size naturally */
+  min-width: 40px;       /* Minimum size, but allow growth */
+  height: 40px;          /* Fixed height to keep navbar consistent */
   display: flex;
   align-items: center;
   justify-content: center;
+  background: transparent;
+  border: none;
+}
+
+.navbar__logo img {
+  width: auto;           /* Let image keep its aspect ratio */
+  height: 100%;          /* Fill the container's height */
+  max-width: 120px;      /* Prevent it from getting too wide */
+  object-fit: contain;   /* Ensure whole image fits without cropping */
+  object-position: left center; /* Align to left if needed */
 }
 
 .navbar__wordmark {
@@ -3363,14 +3372,18 @@ html[data-theme="light"] .logo-dark {
 html[data-theme="light"] .logo-light {
   display: block !important;
 }
-/* New logo wrapper – bigger, clean, with spacing */
 .navbar__logo-wrapper {
-  width: 20px;
-  height: 20px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin-right: 24px;  /* Creates clear separation from navigation */
+  height: 40px;          /* Fixed height */
+}
+
+.navbar__logo-wrapper img {
+  height: 100%;
+  width: auto;
+  max-width: 120px;
+  object-fit: contain;
+  object-position: left center;
 }
 
 .theme-logo {
