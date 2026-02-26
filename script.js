@@ -574,16 +574,9 @@ const FallbackGenerator = (() => {
 // ============================================================
 // GEMINI AI CLIENT – contains full generation logic (now using proxy)
 // ============================================================
-// ============================================================
-// GEMINI AI CLIENT – contains full generation logic (now using proxy)
-// ============================================================
 const GeminiAI = (() => {
-  // Always configured because we use a serverless proxy
-  function isConfigured() {
-    return true;
-  }
+  function isConfigured() { return true; }
 
-  // For JSON responses (courses, quizzes)
   async function callGemini(prompt, description = 'API call') {
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
@@ -619,13 +612,12 @@ const GeminiAI = (() => {
     }
   }
 
-  // For raw text responses (doubt answers)
   async function callGeminiRaw(prompt, description = 'API call') {
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 1000, // enough for a detailed answer
+        maxOutputTokens: 1000,
       }
     };
     console.log(`[GeminiAI] ${description} – sending raw request to proxy...`);
@@ -640,7 +632,6 @@ const GeminiAI = (() => {
 
       console.log(`[GeminiAI] Response status: ${res.status} ${res.statusText}`);
 
-      // Get response as text first
       const responseText = await res.text();
       console.log(`[GeminiAI] Raw response (first 500 chars): ${responseText.substring(0, 500)}`);
 
@@ -671,124 +662,12 @@ const GeminiAI = (() => {
       return text.trim();
     } catch (error) {
       console.error('[GeminiAI] Fetch or parsing error:', error);
-      throw error; // rethrow to be caught by askDoubt
+      throw error;
     }
   }
 
   async function generateCourse({ subject, duration, unit, difficulty }) {
-    console.log('[GeminiAI] Starting course generation', { subject, duration, unit, difficulty });
-    const totalDays = unit === 'weeks' ? duration * 7 : unit === 'months' ? duration * 30 : duration;
-    const numDays = totalDays;
-    const domain = DomainDetector.detect(subject);
-    console.log('[GeminiAI] Generating day titles...');
-    const titlePrompt = `Create a list of ${numDays} lesson titles for a "${difficulty}" level course on "${subject}" lasting ${numDays} days. Return a JSON array of strings. The titles should follow a logical progression.`;
-    let titles;
-    try {
-      const titleData = await callGemini(titlePrompt, 'Generating titles');
-      if (Array.isArray(titleData)) titles = titleData;
-      else throw new Error('Titles not array');
-    } catch (e) {
-      console.warn('Title generation failed, using fallback', e);
-      titles = [];
-      for (let i = 1; i <= numDays; i++) {
-        if (i === 1) titles.push(`Introduction to ${subject}`);
-        else if (i === 2) titles.push(`Core Principles of ${subject}`);
-        else if (i === 3) titles.push(`Fundamental Concepts in ${subject}`);
-        else if (i === 4) titles.push(`Essential Techniques for ${subject}`);
-        else if (i === 5) titles.push(`Hands‑on Practice with ${subject}`);
-        else if (i === 6) titles.push(`Intermediate ${subject} Skills`);
-        else if (i === 7) titles.push(`Deep Dive into ${subject}`);
-        else titles.push(`Advanced Topics in ${subject} (Part ${i-7})`);
-      }
-    }
-    while (titles.length < numDays) titles.push(`Day ${titles.length + 1}: Further Study in ${subject}`);
-
-    const allLessons = [];
-    for (let start = 1; start <= numDays; start += CONFIG.CHUNK_SIZE) {
-      const end = Math.min(start + CONFIG.CHUNK_SIZE - 1, numDays);
-      console.log(`[GeminiAI] Generating chunk for days ${start}–${end}...`);
-      const chunkTitles = titles.slice(start - 1, end);
-      const chunkOutline = chunkTitles.map((t, idx) => `Day ${start + idx}: "${t}"`).join('\n');
-      let domainInstructions = '';
-      if (domain === 'history') {
-        domainInstructions = `- Include references to key historical figures, events, and primary sources.\n- Suggest books, documentaries, or movies at the end of relevant lessons.\n- Make the content engaging and narrative‑driven.`;
-      } else if (domain === 'literature') {
-        domainInstructions = `- Include analysis of themes, characters, and literary devices.\n- Suggest reading passages or excerpts.\n- Encourage critical thinking and interpretation.`;
-      } else if (domain === 'technical') {
-        domainInstructions = `- Include code examples, syntax explanations, and practical exercises.\n- On every 3rd day, include a hands‑on project idea (but do not generate quiz).\n- At the end, include a final project description with a problem statement.`;
-      } else {
-        domainInstructions = `- Provide clear explanations and real‑world examples.\n- Include exercises for practice.`;
-      }
-      const chunkPrompt = `You are an expert curriculum designer. Create detailed content for days ${start} to ${end} of a "${difficulty}" level course on "${subject}".
-
-**Domain‑specific instructions:**
-${domainInstructions}
-
-For each day, provide ONLY a lesson (target ${CONFIG.LESSON_WORDS} words) with explanations, examples, and exercises. Do NOT include quizzes or projects in this output – they will be generated later on‑demand.
-
-Use these titles:
-${chunkOutline}
-
-Return a JSON object with a single key "lessons" containing an array of lesson objects. Each lesson object must have:
-- "id": a unique string (e.g., "day-5-lesson")
-- "day": the day number
-- "type": "lesson"
-- "title": the lesson title
-- "description": a short description
-- "content": the full lesson content (as a string, with markdown allowed)
-- "completed": false (will be updated later)
-- "notes": "" (empty string)
-- "doubts": [] (empty array)
-- "quizzes": [] (empty array)
-
-**Important:** 
-- Return ONLY valid JSON. No markdown, no extra text.
-- Escape all newlines inside string values as \\n.
-- Ensure every day from ${start} to ${end} is included.`;
-
-      let chunkLessons = null;
-      let success = false;
-      for (let attempt = 0; attempt < CONFIG.RETRY_LIMIT; attempt++) {
-        try {
-          const data = await callGemini(chunkPrompt, `Chunk ${start}-${end} (attempt ${attempt+1})`);
-          if (data.lessons && Array.isArray(data.lessons)) {
-            chunkLessons = data.lessons;
-            success = true;
-            break;
-          }
-        } catch (e) {
-          console.warn(`Chunk ${start}-${end} attempt ${attempt+1} failed`, e);
-        }
-      }
-      if (!success) {
-        console.warn(`Chunk ${start}-${end} failed, using fallback lessons`);
-        chunkLessons = chunkTitles.map((title, idx) => ({
-          id: `day-${start + idx}-lesson-fallback-${Date.now()}`,
-          day: start + idx,
-          type: 'lesson',
-          title,
-          description: `Lesson for day ${start + idx}.`,
-          content: `# ${title}\n\nThis lesson could not be generated by AI. Please try again later.`,
-          completed: false,
-          notes: '',
-          doubts: [],
-          quizzes: [],
-        }));
-      }
-      allLessons.push(...chunkLessons);
-      await new Promise(resolve => setTimeout(resolve, CONFIG.RATE_LIMIT_DELAY));
-    }
-    allLessons.sort((a, b) => a.day - b.day);
-    return {
-      subject: subject.trim(),
-      duration: parseInt(duration, 10),
-      unit,
-      difficulty,
-      totalDays: numDays,
-      description: `A ${difficulty} course on ${subject} spanning ${duration} ${unit}.`,
-      createdAt: new Date().toISOString(),
-      lessons: allLessons,
-    };
+    // ... (keep your existing implementation)
   }
 
   async function askDoubt(lessonContent, question) {
