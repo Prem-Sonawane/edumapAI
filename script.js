@@ -580,15 +580,10 @@ const GeminiAI = (() => {
     return true;
   }
 
-  // For JSON responses (courses, quizzes)
   async function callGemini(prompt, description = 'API call') {
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.8,
-        maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS,
-      },
-      thinking_level: "LOW" // optional speed boost
+      generationConfig: { temperature: 0.8, maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS },
     };
     console.log(`[GeminiAI] ${description} – sending request to proxy...`);
     const res = await fetch('/api/gemini', {
@@ -615,32 +610,6 @@ const GeminiAI = (() => {
       console.error('[GeminiAI] JSON parse failed after repair', e, 'Repaired string start:', repaired.substring(0, 500));
       throw new Error('Invalid JSON after repair');
     }
-  }
-
-  // For raw text responses (doubt answers)
-  async function callGeminiRaw(prompt, description = 'API call') {
-    const body = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 1000, // enough for a detailed answer
-      },
-      thinking_level: "LOW"
-    };
-    console.log(`[GeminiAI] ${description} – sending raw request to proxy...`);
-    const res = await fetch('/api/gemini', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Gemini proxy error: ${res.status} ${errorText}`);
-    }
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Empty response from Gemini proxy');
-    return text.trim();
   }
 
   async function generateCourse({ subject, duration, unit, difficulty }) {
@@ -769,8 +738,8 @@ Question: ${question}
 
 Answer:`;
     try {
-      const answer = await callGeminiRaw(prompt, 'Ask doubt');
-      return answer;
+      const data = await callGemini(prompt, 'Ask doubt');
+      return typeof data === 'string' ? data : JSON.stringify(data);
     } catch (e) {
       console.error('Doubt API failed', e);
       return 'Sorry, I could not answer your doubt at the moment. Please try again later.';
