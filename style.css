@@ -263,7 +263,7 @@ a { text-decoration: none; color: inherit; }
 .navbar__logo img {
   width: auto;           /* Let image keep its aspect ratio */
   height: 100%;          /* Fill the container's height */
-  max-width: 120px;      /* Prevent it from getting too wide */
+  max-width: 150px;      /* Prevent it from getting too wide */
   object-fit: contain;   /* Ensure whole image fits without cropping */
   object-position: left center; /* Align to left if needed */
 }
@@ -3381,7 +3381,7 @@ html[data-theme="light"] .logo-light {
 .navbar__logo-wrapper img {
   height: 100%;
   width: auto;
-  max-width: 120px;
+  max-width: 150px;
   object-fit: contain;
   object-position: left center;
 }
