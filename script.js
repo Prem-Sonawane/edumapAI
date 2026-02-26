@@ -570,6 +570,7 @@ const FallbackGenerator = (() => {
   }
   return { generateCourse };
 })();
+
 // ============================================================
 // GEMINI AI CLIENT – contains full generation logic (now using proxy)
 // ============================================================
@@ -754,7 +755,7 @@ Return a JSON object with a single key "lessons" containing an array of lesson o
     };
   }
 
-   async function askDoubt(lessonContent, question) {
+  async function askDoubt(lessonContent, question) {
     const prompt = `You are a helpful tutor. Answer the following question about the lesson below. Provide a complete, detailed answer. Do not stop mid-sentence. Your answer should be helpful and thorough, and you must finish the answer completely. Take your time to write a full response. Use as many words as needed.
 
 Lesson content:
@@ -1174,7 +1175,132 @@ const UIRenderer = (() => {
     }
   }
 
-  // ---------- FULL LESSON MODAL with async refresh and chunked TTS ----------
+  // ---------- TTS Player with pause/resume ----------
+  function createTTSPlayer(text, voice = 'aura-asteria-en') {
+    const MAX_CHUNK_SIZE = 1000;
+    const chunks = [];
+    for (let i = 0; i < text.length; i += MAX_CHUNK_SIZE) {
+      chunks.push(text.substring(i, i + MAX_CHUNK_SIZE));
+    }
+
+    let currentChunkIndex = 0;
+    let currentAudio = null;
+    let isPlaying = false;
+    let isPaused = false;
+    let pausedTime = 0;
+    let audioUrl = null;
+    let onPlayCallback = null;
+    let onPauseCallback = null;
+    let onStopCallback = null;
+    let onErrorCallback = null;
+
+    async function loadChunk(index) {
+      if (index >= chunks.length) return null;
+      const text = chunks[index];
+      try {
+        const response = await fetch(TTS_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, voice }),
+        });
+        if (!response.ok) throw new Error(`TTS chunk failed (${response.status})`);
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+      } catch (e) {
+        console.error('TTS chunk load error', e);
+        if (onErrorCallback) onErrorCallback('Could not generate audio for part of the lesson.');
+        return null;
+      }
+    }
+
+    async function playChunk(index, startTime = 0) {
+      if (index >= chunks.length) {
+        stop();
+        return;
+      }
+      const url = await loadChunk(index);
+      if (!url) {
+        stop();
+        return;
+      }
+      audioUrl = url;
+      currentAudio = new Audio(url);
+      currentAudio.currentTime = startTime;
+      currentAudio.onended = () => {
+        currentAudio = null;
+        URL.revokeObjectURL(url);
+        if (index + 1 < chunks.length) {
+          playChunk(index + 1, 0);
+        } else {
+          stop(); // finished
+        }
+      };
+      currentAudio.onerror = (e) => {
+        console.error('TTS chunk playback error', e);
+        if (onErrorCallback) onErrorCallback('Audio playback failed');
+        stop();
+      };
+      await currentAudio.play();
+      isPlaying = true;
+      isPaused = false;
+      currentChunkIndex = index;
+      if (onPlayCallback) onPlayCallback();
+    }
+
+    function pause() {
+      if (currentAudio && isPlaying) {
+        pausedTime = currentAudio.currentTime;
+        currentAudio.pause();
+        isPlaying = false;
+        isPaused = true;
+        if (onPauseCallback) onPauseCallback();
+      }
+    }
+
+    function resume() {
+      if (isPaused && currentChunkIndex < chunks.length) {
+        playChunk(currentChunkIndex, pausedTime);
+      }
+    }
+
+    function stop() {
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+        currentAudio = null;
+      }
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+        audioUrl = null;
+      }
+      isPlaying = false;
+      isPaused = false;
+      pausedTime = 0;
+      currentChunkIndex = 0;
+      if (onStopCallback) onStopCallback();
+    }
+
+    function restart() {
+      stop();
+      playChunk(0, 0);
+    }
+
+    return {
+      play: () => playChunk(currentChunkIndex, 0),
+      pause,
+      resume,
+      stop,
+      restart,
+      setOnPlay: (cb) => onPlayCallback = cb,
+      setOnPause: (cb) => onPauseCallback = cb,
+      setOnStop: (cb) => onStopCallback = cb,
+      setOnError: (cb) => onErrorCallback = cb,
+      isPlaying: () => isPlaying,
+      isPaused: () => isPaused,
+    };
+  }
+
+  // ---------- FULL LESSON MODAL with async refresh and chunked TTS (pause/resume) ----------
   function showLessonModal(course, lesson) {
     document.getElementById('lesson-modal')?.remove();
 
@@ -1213,6 +1339,7 @@ const UIRenderer = (() => {
           <h3 class="lesson-modal__title">${escapeHtml(lesson.title)}</h3>
           <div class="lesson-modal__header-actions">
             <button class="icon-btn" id="listen-lesson-btn" title="Listen to lesson">🔊</button>
+            <button class="icon-btn" id="restart-lesson-btn" title="Restart">↺</button>
             <button class="icon-btn" id="lesson-close-btn" aria-label="Close">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l12 12M13 1L1 13"/></svg>
             </button>
@@ -1344,82 +1471,68 @@ const UIRenderer = (() => {
 
     // Close modal
     const closeModal = () => {
-      if (cancelTTS) cancelTTS(); // stop any ongoing TTS
+      if (player) player.stop(); // stop any ongoing TTS
       modal.classList.remove('is-open');
       setTimeout(() => modal.remove(), 300);
     };
     modal.querySelector('.lesson-modal__backdrop').addEventListener('click', closeModal);
     modal.querySelector('#lesson-close-btn').addEventListener('click', closeModal);
 
-    // ----- Audio playback with chunked Deepgram TTS -----
+    // ----- Audio playback with pause/resume -----
     const listenBtn = modal.querySelector('#listen-lesson-btn');
-    let cancelTTS = null;
-    let isPlaying = false;
+    const restartBtn = modal.querySelector('#restart-lesson-btn');
+    const contentDiv = modal.querySelector('#lesson-content');
+    const fullText = contentDiv.innerText || contentDiv.textContent;
 
-    listenBtn.addEventListener('click', () => {
-      console.log('[UI] Listen button clicked, isPlaying:', isPlaying);
-      
-      if (isPlaying) {
-        console.log('[UI] Stopping current playback');
-        if (typeof cancelTTS === 'function') {
-          console.log('[UI] Calling cancelTTS function');
-          cancelTTS();
-          cancelTTS = null;
-        }
+    let player = null;
+    let isPlaying = false;
+    let isPaused = false;
+
+    function initPlayer() {
+      if (player) player.stop();
+      player = createTTSPlayer(fullText);
+      player.setOnPlay(() => {
+        isPlaying = true;
+        isPaused = false;
+        listenBtn.innerHTML = '⏸️';
+        listenBtn.title = 'Pause';
+      });
+      player.setOnPause(() => {
         isPlaying = false;
+        isPaused = true;
+        listenBtn.innerHTML = '▶️';
+        listenBtn.title = 'Resume';
+      });
+      player.setOnStop(() => {
+        isPlaying = false;
+        isPaused = false;
         listenBtn.innerHTML = '🔊';
         listenBtn.title = 'Listen to lesson';
-        return;
-      }
-
-      const contentDiv = modal.querySelector('#lesson-content');
-      const fullText = contentDiv.innerText || contentDiv.textContent;
-      console.log('[UI] Starting playback, text length:', fullText.length);
-
-      listenBtn.innerHTML = '⏳';
-      listenBtn.disabled = true;
-
-      console.log('[UI] Calling playTextWithTTS');
-      const cancelPromise = playTextWithTTS(
-        fullText,
-        () => {
-          // onStart
-          console.log('[UI] TTS onStart called');
-          isPlaying = true;
-          listenBtn.innerHTML = '⏸️';
-          listenBtn.title = 'Stop';
-          listenBtn.disabled = false;
-        },
-        () => {
-          // onStop
-          console.log('[UI] TTS onStop called');
-          isPlaying = false;
-          listenBtn.innerHTML = '🔊';
-          listenBtn.title = 'Listen to lesson';
-          listenBtn.disabled = false;
-          cancelTTS = null;
-        },
-        (errorMsg) => {
-          // onError
-          console.log('[UI] TTS onError:', errorMsg);
-          UIRenderer.toast(errorMsg, 'error');
-          isPlaying = false;
-          listenBtn.innerHTML = '🔊';
-          listenBtn.title = 'Listen to lesson';
-          listenBtn.disabled = false;
-          cancelTTS = null;
-        }
-      );
-      
-      cancelPromise.then(cancel => {
-        cancelTTS = cancel;
-        console.log('[UI] cancelTTS stored:', typeof cancelTTS);
-      }).catch(err => {
-        console.error('[UI] Failed to get cancel function:', err);
-        UIRenderer.toast('Could not initialize TTS', 'error');
-        listenBtn.innerHTML = '🔊';
-        listenBtn.disabled = false;
       });
+      player.setOnError((msg) => {
+        UIRenderer.toast(msg, 'error');
+        isPlaying = false;
+        isPaused = false;
+        listenBtn.innerHTML = '🔊';
+        listenBtn.title = 'Listen to lesson';
+      });
+    }
+
+    listenBtn.addEventListener('click', () => {
+      if (!player) initPlayer();
+
+      if (isPlaying) {
+        player.pause();
+      } else if (isPaused) {
+        player.resume();
+      } else {
+        player.play();
+      }
+    });
+
+    restartBtn.addEventListener('click', () => {
+      if (!player) initPlayer();
+      player.restart();
     });
 
     // Ask Doubt
