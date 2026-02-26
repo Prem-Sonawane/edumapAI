@@ -618,6 +618,7 @@ const GeminiAI = (() => {
   }
 
 async function callGeminiRaw(prompt, description = 'API call') {
+  console.log('[TEST] callGeminiRaw is running'); // ADD THIS
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.7, maxOutputTokens: 1000 },
