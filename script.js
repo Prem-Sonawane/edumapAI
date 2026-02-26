@@ -617,31 +617,58 @@ const GeminiAI = (() => {
     }
   }
 
-  // For raw text responses (doubt answers)
-  async function callGeminiRaw(prompt, description = 'API call') {
-    const body = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 1000, // enough for a detailed answer
-      },
-      thinking_level: "LOW"
-    };
-    console.log(`[GeminiAI] ${description} – sending raw request to proxy...`);
+async function callGeminiRaw(prompt, description = 'API call') {
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.7, maxOutputTokens: 1000 },
+    thinking_level: "LOW"
+  };
+  console.log(`[GeminiAI] ${description} – sending raw request to proxy...`);
+  console.log(`[GeminiAI] Prompt length: ${prompt.length}`);
+
+  try {
     const res = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+
+    console.log(`[GeminiAI] Response status: ${res.status} ${res.statusText}`);
+
+    // Get response as text first
+    const responseText = await res.text();
+    console.log(`[GeminiAI] Raw response (first 500 chars): ${responseText.substring(0, 500)}`);
+
     if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Gemini proxy error: ${res.status} ${errorText}`);
+      throw new Error(`Gemini proxy error: ${res.status} - ${responseText}`);
     }
-    const data = await res.json();
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('[GeminiAI] Failed to parse JSON:', responseText);
+      throw new Error('Invalid JSON from proxy');
+    }
+
+    console.log('[GeminiAI] Parsed response:', JSON.stringify(data, null, 2));
+
+    if (data.error) {
+      console.error('[GeminiAI] Proxy returned error:', data.error);
+      throw new Error(`Gemini proxy error: ${data.error.message || JSON.stringify(data.error)}`);
+    }
+
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Empty response from Gemini proxy');
+    if (!text) {
+      console.error('[GeminiAI] No text in response. Full data:', data);
+      throw new Error('Empty response from Gemini proxy');
+    }
     return text.trim();
+  } catch (error) {
+    console.error('[GeminiAI] Fetch or parsing error:', error);
+    throw error; // rethrow to be caught by askDoubt
   }
+}
 
   async function generateCourse({ subject, duration, unit, difficulty }) {
     console.log('[GeminiAI] Starting course generation', { subject, duration, unit, difficulty });
