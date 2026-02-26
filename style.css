@@ -3608,8 +3608,15 @@ html[data-theme="light"] .logo-light {
   .streak-display {
     font-size: var(--text-xs);
     padding: 2px 6px;
+
+  /* Fix logo cropping on phones */
+  .navbar__logo {
+    min-width: 120px;  /* wide enough for full logo */
   }
-  
+  .navbar__logo img {
+    object-position: left; /* keep left alignment */
+  }
+}
   /* Hero */
   .hero {
     padding: var(--space-4) 0 var(--space-6);
